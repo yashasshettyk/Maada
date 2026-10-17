@@ -24,14 +24,20 @@ CREATE TABLE financial_settings (
   id                      smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   institution_name        text NOT NULL DEFAULT 'Adka Shree Beeramarlara Maada'
                           CHECK (length(btrim(institution_name)) BETWEEN 1 AND 120),
-  receipt_prefix          text NOT NULL DEFAULT 'ABM' CHECK (receipt_prefix ~ '^[A-Z0-9]{1,8}$'),
+  institution_name_kn     text NOT NULL DEFAULT 'ಅಡ್ಕ ಶ್ರೀ ಬೀರಮಾರ್ಲರ ಮಾಡ' CHECK (length(btrim(institution_name_kn)) BETWEEN 1 AND 120),
+  donation_title_kn       text NOT NULL DEFAULT 'ದೇಣಿಗೆ ರಸೀದಿ',
+  bill_title_kn           text NOT NULL DEFAULT 'ಖರ್ಚಿನ ಪಟ್ಟಿ',
+  donation_ack_kn         text NOT NULL DEFAULT 'ಅಡ್ಕ ಶ್ರೀ ಬೀರಮಾರ್ಲರ ಮಾಡಕ್ಕೆ ತಾವು ನೀಡಿದ ಉದಾರ ದೇಣಿಗೆ ಮತ್ತು ಬೆಂಬಲಕ್ಕೆ ಹೃತ್ಪೂರ್ವಕ ಧನ್ಯವಾದಗಳು.',
+  seve_ack_kn             text NOT NULL DEFAULT 'ಅಡ್ಕ ಶ್ರೀ ಬೀರಮಾರ್ಲರ ಮಾಡಕ್ಕೆ ತಾವು ಸಲ್ಲಿಸಿದ ಸೇವೆ ಮತ್ತು ಬೆಂಬಲಕ್ಕೆ ಹೃತ್ಪೂರ್ವಕ ಧನ್ಯವಾದಗಳು.',
+  receipt_footer_kn       text NOT NULL DEFAULT 'ಇದು ಗಣಕಯಂತ್ರದಿಂದ ರಚಿಸಲಾದ ರಸೀದಿ',
+  donation_prefix         text NOT NULL DEFAULT 'ದೇ' CHECK (length(btrim(donation_prefix)) BETWEEN 1 AND 12),
+  seve_prefix             text NOT NULL DEFAULT 'ಸೇ' CHECK (length(btrim(seve_prefix)) BETWEEN 1 AND 12),
+  bill_prefix             text NOT NULL DEFAULT 'EXP' CHECK (length(btrim(bill_prefix)) BETWEEN 1 AND 12),
   currency                char(3) NOT NULL DEFAULT 'INR' CHECK (currency = 'INR'),
   timezone                text NOT NULL DEFAULT 'Asia/Kolkata',
   date_format             text NOT NULL DEFAULT 'DD MMM YYYY'
                           CHECK (date_format IN ('DD MMM YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD')),
   allow_overpayment       boolean NOT NULL DEFAULT false,
-  receipt_acknowledgment  text NOT NULL DEFAULT 'Thank you for your generous contribution and support towards Adka Shree Beeramarlara Maada.',
-  receipt_footer_note     text NOT NULL DEFAULT 'This is a computer-generated receipt.',
   offer_receipt_after_save boolean NOT NULL DEFAULT true,
   temple_photo_asset_id   uuid NULL REFERENCES assets(id) ON DELETE SET NULL,
   photo_focus_x           smallint NOT NULL DEFAULT 50 CHECK (photo_focus_x BETWEEN 0 AND 100),
@@ -84,16 +90,19 @@ CREATE TABLE rituals (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name            text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 120),
   default_amount  bigint NULL CHECK (default_amount >= 0),
+  receipt_title   text NULL,
   description     text NULL,
   is_demo         boolean NOT NULL DEFAULT false,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX rituals_name_uq ON rituals (lower(name));
+INSERT INTO rituals (name, receipt_title) VALUES ('Sankranti Seve', 'ಸಂಕ್ರಾಂತಿ ಸೇವೆ');
 
 CREATE TABLE ritual_entries (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   ritual_id          uuid NOT NULL REFERENCES rituals(id) ON DELETE RESTRICT,
+  event_id           uuid NULL REFERENCES events(id) ON DELETE SET NULL,
   devotee_name       text NOT NULL CHECK (length(btrim(devotee_name)) BETWEEN 1 AND 120),
   contact            text NULL,
   ritual_date        date NOT NULL,
@@ -121,6 +130,7 @@ CREATE INDEX ritual_payments_entry_idx ON ritual_payments (ritual_entry_id, paym
 
 CREATE TABLE donations (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id          uuid NULL REFERENCES events(id) ON DELETE SET NULL,
   donor_name        text NOT NULL CHECK (length(btrim(donor_name)) BETWEEN 1 AND 120),
   donation_date     date NOT NULL,
   amount            bigint NOT NULL CHECK (amount > 0),
@@ -141,6 +151,8 @@ CREATE TABLE expenses (
   ritual_entry_id  uuid NULL REFERENCES ritual_entries(id) ON DELETE SET NULL,
   title            text NOT NULL CHECK (length(btrim(title)) BETWEEN 1 AND 160),
   category_id      uuid NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+  quantity         text NULL,
+  unit_rate        bigint NULL CHECK (unit_rate >= 0),
   amount           bigint NOT NULL CHECK (amount > 0),
   expense_date     date NOT NULL,
   vendor           text NULL,
@@ -198,7 +210,7 @@ CREATE INDEX transactions_category_idx ON transactions (category_id);
 CREATE INDEX transactions_event_idx ON transactions (event_id);
 
 CREATE TABLE receipt_sequences (
-  receipt_type  text NOT NULL CHECK (receipt_type IN ('donation', 'ritual_payment')),
+  receipt_type  text NOT NULL CHECK (receipt_type IN ('donation', 'ritual_payment', 'expense_bill')),
   year          integer NOT NULL,
   last_value    integer NOT NULL,
   PRIMARY KEY (receipt_type, year)
@@ -207,8 +219,8 @@ CREATE TABLE receipt_sequences (
 CREATE TABLE receipts (
   id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   receipt_number       text NOT NULL UNIQUE,
-  receipt_type         text NOT NULL CHECK (receipt_type IN ('donation', 'ritual_payment')),
-  source_type          text NOT NULL CHECK (source_type IN ('donation', 'ritual_payment')),
+  receipt_type         text NOT NULL CHECK (receipt_type IN ('donation', 'ritual_payment', 'expense_bill')),
+  source_type          text NOT NULL CHECK (source_type IN ('donation', 'ritual_payment', 'event')),
   source_id            uuid NOT NULL,
   issue_date           date NOT NULL,
   snapshot_data        jsonb NOT NULL,
@@ -218,7 +230,8 @@ CREATE TABLE receipts (
   replaces_receipt_id  uuid NULL REFERENCES receipts(id) ON DELETE SET NULL,
   is_demo              boolean NOT NULL DEFAULT false,
   created_at           timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT receipts_type_matches_source CHECK (receipt_type = source_type),
+  CONSTRAINT receipts_type_matches_source CHECK (
+    (receipt_type = 'expense_bill' AND source_type = 'event') OR receipt_type = source_type),
   CONSTRAINT receipts_cancel_consistent CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))
 );
 -- Only one valid receipt per source record at a time.

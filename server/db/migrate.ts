@@ -17,13 +17,19 @@ export async function migrate(db: Database, log: (msg: string) => void = () => u
   for (const file of files) {
     if (applied.has(file)) continue;
     const sql = await readFile(path.join(MIGRATIONS_DIR, file), 'utf8');
-    await db.tx(async (q) => {
-      // Statements are executed one by one so every driver can run them with parameters disabled.
+    const didRun = await db.tx(async (q) => {
+      // Serialise concurrent cold starts: only one instance applies a migration.
+      await q.query('SELECT pg_advisory_xact_lock(727274)');
+      const done = await q.query('SELECT 1 FROM schema_migrations WHERE name = $1', [file]);
+      if (done.length) return false;
       for (const statement of splitSql(sql)) await q.query(statement);
       await q.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
+      return true;
     });
-    log(`applied ${file}`);
-    ran.push(file);
+    if (didRun) {
+      log(`applied ${file}`);
+      ran.push(file);
+    }
   }
   return ran;
 }
