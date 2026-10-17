@@ -136,8 +136,10 @@ export function ledgerRoutes(db: Database) {
   });
 
   app.post('/receipts', async (c) => {
-    const body = parse(z.object({ receipt_type: z.enum(['donation', 'ritual_payment', 'expense_bill']), source_id: uuid }), await c.req.json());
-    const receipt = await db.tx((q) => issueReceipt(q, body.receipt_type as ReceiptType, body.source_id));
+    const body = parse(z.object({
+      receipt_type: z.enum(['donation', 'ritual_payment', 'expense_bill']), source_id: uuid, receipt_number: z.string().max(40).nullish(),
+    }), await c.req.json());
+    const receipt = await db.tx((q) => issueReceipt(q, body.receipt_type as ReceiptType, body.source_id, { receiptNumber: body.receipt_number ?? '' }));
     return c.json({ item: receipt });
   });
 
@@ -158,13 +160,26 @@ export function ledgerRoutes(db: Database) {
   /** Cancel a receipt and issue a fresh one with the record's current details. */
   app.post('/receipts/:id/reissue', async (c) => {
     const id = parse(uuid, c.req.param('id'));
+    const body = parse(z.object({ receipt_number: z.string().max(40).nullish() }), await c.req.json().catch(() => ({})));
     const item = await db.tx(async (q) => {
       const [r] = await q.query<Record<string, any>>('SELECT * FROM receipts WHERE id = $1 FOR UPDATE', [id]);
       if (!r) throw notFound('Receipt');
       if (r.status === 'issued') await cancelActiveReceipt(q, r.source_type, r.source_id, 'Reissued with updated details');
-      return issueReceipt(q, r.receipt_type, r.source_id, { replacesId: r.id });
+      return issueReceipt(q, r.receipt_type, r.source_id, { receiptNumber: body.receipt_number || r.receipt_number, replacesId: r.id });
     });
     return c.json({ item });
+  });
+
+  /** Permanently remove a receipt (valid or cancelled). The record it was issued for is kept. */
+  app.delete('/receipts/:id', async (c) => {
+    const id = parse(uuid, c.req.param('id'));
+    await db.tx(async (q) => {
+      const [r] = await q.query<Record<string, any>>('SELECT * FROM receipts WHERE id = $1 FOR UPDATE', [id]);
+      if (!r) throw notFound('Receipt');
+      await q.query('DELETE FROM receipts WHERE id = $1', [id]);
+      await audit(q, 'receipt', id, 'delete', r, null);
+    });
+    return c.json({ ok: true });
   });
 
   // ---- Reports ----

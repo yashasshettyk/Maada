@@ -10,6 +10,7 @@ import { amountInKannadaWords } from '../../shared/words-kn';
 import { amountInWords } from '../../shared/words';
 import { kn } from '../lib/strings';
 import { AmountInput, Button, Card, Field, Select, Skeleton, TextArea, TextInput, Toggle, useAmount } from '../components/ui';
+import { ReceiptNumberField } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 import { MethodSelect } from '../components/MethodSelect';
 import clsx from 'clsx';
@@ -34,6 +35,7 @@ export default function DonationForm() {
   const [notes, setNotes] = useState('');
   const [eventId, setEventId] = useState('');
   const [receipt, setReceipt] = useState(true);
+  const [receiptNo, setReceiptNo] = useState('');
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function DonationForm() {
     donor: !donor.trim() ? t('don.donor') : null,
     purpose: !purpose.trim() ? t('don.purpose') : null,
   };
-  const valid = !errors.amount && !errors.donor && !errors.purpose && Boolean(date);
+  const valid = !errors.amount && !errors.donor && !errors.purpose && Boolean(date) && (editing || !receipt || Boolean(receiptNo.trim()));
 
   const save = useSave(
     () => {
@@ -61,7 +63,7 @@ export default function DonationForm() {
         donor_name: donor, donation_date: date, amount: amount.paise, purpose, payment_method: method,
         reference_number: reference, notes, event_id: eventId || null,
       };
-      return editing ? put(`/donations/${id}`, body) : post('/donations', { ...body, id: recordId, issue_receipt: receipt });
+      return editing ? put(`/donations/${id}`, body) : post('/donations', { ...body, id: recordId, issue_receipt: receipt, receipt_number: receipt ? receiptNo.trim() : null });
     },
     {
       success: t('common.saved'),
@@ -131,6 +133,7 @@ export default function DonationForm() {
         </Field>
 
         {!editing && <Card className="!bg-sand !shadow-none"><Toggle checked={receipt} onChange={setReceipt} label={t('rcpt.generateAfterSave')} /></Card>}
+        {!editing && receipt && <ReceiptNumberField id="d-rno" value={receiptNo} onChange={setReceiptNo} touched={touched} />}
         <Button type="submit" size="lg" block loading={save.isPending}>{save.isPending ? t('common.saving') : t('don.save')}</Button>
       </form>
     </Page>

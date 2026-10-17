@@ -9,6 +9,7 @@ import { useSettings } from '../lib/data';
 import { todayIST } from '../../shared/dates';
 import { formatINR } from '../../shared/money';
 import { AmountInput, Button, Card, ConfirmDialog, DetailList, ErrorState, Field, IconButton, List, ListRow, Money, SectionTitle, SeveStatus, Sheet, Skeleton, TextInput, Toggle, useAmount } from '../components/ui';
+import { ReceiptNumberField, ReceiptNumberSheet } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 import { MethodSelect, useMethodLabel } from '../components/MethodSelect';
 import type { Entry } from './Seves';
@@ -21,12 +22,13 @@ function PaymentSheet({ entry, open, onClose }: { entry: Entry; open: boolean; o
   const [date, setDate] = useState(todayIST());
   const [method, setMethod] = useState('Cash');
   const [receipt, setReceipt] = useState(true);
+  const [receiptNo, setReceiptNo] = useState('');
   const over = !settings.data?.settings.allow_overpayment && (amount.paise ?? 0) > entry.pending;
-  const save = useSave(() => post(`/ritual-entries/${entry.id}/payments`, { id: paymentId, amount: amount.paise, payment_date: date, payment_method: method, issue_receipt: receipt }), {
+  const save = useSave(() => post(`/ritual-entries/${entry.id}/payments`, { id: paymentId, amount: amount.paise, payment_date: date, payment_method: method, issue_receipt: receipt, receipt_number: receipt ? receiptNo.trim() : null }), {
     success: t('common.saved'),
     to: (r: any) => (r.receipt && receipt ? `/receipts/${r.receipt.id}` : null),
     replace: false,
-    onDone: () => { onClose(); setPaymentId(newId()); },
+    onDone: () => { onClose(); setPaymentId(newId()); setReceiptNo(''); },
   });
   return (
     <Sheet open={open} onClose={onClose} title={t('seve.recordPayment')}>
@@ -39,7 +41,8 @@ function PaymentSheet({ entry, open, onClose }: { entry: Entry; open: boolean; o
           <Field label={t('common.paymentMethod')} htmlFor="p-method"><MethodSelect id="p-method" value={method} onChange={setMethod} /></Field>
         </div>
         <Card className="!bg-sand !shadow-none"><Toggle checked={receipt} onChange={setReceipt} label={t('rcpt.generateAfterSave')} /></Card>
-        <Button size="lg" block disabled={!amount.paise || over} loading={save.isPending} onClick={() => save.mutate(undefined)}>{t('seve.recordPayment')}</Button>
+        {receipt && <ReceiptNumberField id="p-rno" value={receiptNo} onChange={setReceiptNo} />}
+        <Button size="lg" block disabled={!amount.paise || over || (receipt && !receiptNo.trim())} loading={save.isPending} onClick={() => save.mutate(undefined)}>{t('seve.recordPayment')}</Button>
       </div>
     </Sheet>
   );
@@ -57,7 +60,8 @@ export default function SeveEntry() {
   const [deletePayment, setDeletePayment] = useState<string | null>(null);
   const remove = useSave(() => del(`/ritual-entries/${id}`), { success: t('common.deleted'), to: () => '/seves' });
   const removePayment = useSave(() => del(`/ritual-payments/${deletePayment}`), { success: t('common.deleted'), onDone: () => setDeletePayment(null) });
-  const issue = useSave((paymentId: string) => post('/receipts', { receipt_type: 'ritual_payment', source_id: paymentId }), { to: (r: any) => `/receipts/${r.item.id}`, replace: false });
+  const [issueFor, setIssueFor] = useState<string | null>(null);
+  const issue = useSave((v: { paymentId: string; number: string }) => post('/receipts', { receipt_type: 'ritual_payment', source_id: v.paymentId, receipt_number: v.number }), { to: (r: any) => `/receipts/${r.item.id}`, replace: false, onDone: () => setIssueFor(null) });
   const e: Entry | undefined = q.data?.item;
   const pct = e && e.prescribed_amount > 0 ? Math.min(100, Math.round((e.paid / e.prescribed_amount) * 100)) : 100;
 
@@ -100,7 +104,7 @@ export default function SeveEntry() {
                     {p.receipt_id ? (
                       <Link to={`/receipts/${p.receipt_id}`} className="flex h-9 items-center gap-1.5 rounded-xl bg-sand px-3 text-xs font-bold text-maroon"><ReceiptText className="size-4" />{p.receipt_number}</Link>
                     ) : (
-                      <Button size="sm" variant="gold" loading={issue.isPending && issue.variables === p.id} onClick={() => issue.mutate(p.id)}>{t('rcpt.create')}</Button>
+                      <Button size="sm" variant="gold" onClick={() => setIssueFor(p.id)}>{t('rcpt.create')}</Button>
                     )}
                     <IconButton label={t('common.delete')} onClick={() => setDeletePayment(p.id)}><Trash2 className="size-[18px] text-muted" /></IconButton>
                   </div>
@@ -132,6 +136,7 @@ export default function SeveEntry() {
         confirmLabel={t('common.delete')} loading={remove.isPending} onConfirm={() => remove.mutate(undefined)} />
       <ConfirmDialog open={!!deletePayment} onClose={() => setDeletePayment(null)} title={t('seve.deletePayment')} message={t('seve.deletePaymentHint')}
         confirmLabel={t('common.delete')} loading={removePayment.isPending} onConfirm={() => removePayment.mutate(undefined)} />
+      <ReceiptNumberSheet open={issueFor != null} onClose={() => setIssueFor(null)} loading={issue.isPending} onSubmit={(number) => issueFor && issue.mutate({ paymentId: issueFor, number })} />
     </Page>
   );
 }

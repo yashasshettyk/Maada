@@ -35,8 +35,9 @@ const entryCreate = z.object({
   ...entryFields,
   initial_payment: z.object({ id: uuid, ...paymentFields }).nullish(),
   issue_receipt: z.boolean().optional(),
+  receipt_number: z.string().max(40).nullish(),
 });
-const paymentCreate = z.object({ id: uuid, ...paymentFields, issue_receipt: z.boolean().optional() });
+const paymentCreate = z.object({ id: uuid, ...paymentFields, issue_receipt: z.boolean().optional(), receipt_number: z.string().max(40).nullish() });
 
 export const ENTRY_SELECT = `
   SELECT e.*, r.name AS ritual_name, r.receipt_title, ev.name AS event_name,
@@ -180,7 +181,7 @@ export function ritualRoutes(db: Database) {
       if (inserted[0]) await audit(q, 'ritual_entry', body.id, 'create', null, inserted[0]);
       if (body.initial_payment) {
         payment = (await insertPayment(q, body.id, body.initial_payment)).payment;
-        if (body.issue_receipt) receipt = await issueReceipt(q, 'ritual_payment', payment.id);
+        if (body.issue_receipt) receipt = await issueReceipt(q, 'ritual_payment', payment.id, { receiptNumber: body.receipt_number ?? '' });
         else receipt = await activeReceipt(q, 'ritual_payment', payment.id);
       }
       const [item] = await q.query(`${ENTRY_SELECT} WHERE e.id = $1`, [body.id]);
@@ -238,7 +239,7 @@ export function ritualRoutes(db: Database) {
       const [entry] = await q.query('SELECT id FROM ritual_entries WHERE id = $1', [entryId]);
       if (!entry) throw notFound('Ritual entry');
       const { payment, duplicate } = await insertPayment(q, entryId, body);
-      const receipt = body.issue_receipt ? await issueReceipt(q, 'ritual_payment', payment.id) : await activeReceipt(q, 'ritual_payment', payment.id);
+      const receipt = body.issue_receipt ? await issueReceipt(q, 'ritual_payment', payment.id, { receiptNumber: body.receipt_number ?? '' }) : await activeReceipt(q, 'ritual_payment', payment.id);
       return { payment, receipt, duplicate };
     });
     return c.json(result, result.duplicate ? 200 : 201);

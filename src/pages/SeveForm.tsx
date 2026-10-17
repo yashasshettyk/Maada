@@ -7,6 +7,7 @@ import { useSave } from '../lib/forms';
 import { useEvents, useRituals, useSettings } from '../lib/data';
 import { todayIST } from '../../shared/dates';
 import { AmountInput, Button, Card, Field, Select, Skeleton, TextArea, TextInput, Toggle, useAmount } from '../components/ui';
+import { ReceiptNumberField } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 import { MethodSelect } from '../components/MethodSelect';
 import { RitualSelect } from '../components/RitualSelect';
@@ -31,6 +32,7 @@ export default function SeveForm() {
   const [notes, setNotes] = useState('');
   const [eventId, setEventId] = useState('');
   const [receipt, setReceipt] = useState(true);
+  const [receiptNo, setReceiptNo] = useState('');
   const [touched, setTouched] = useState(false);
 
   useEffect(() => { if (settings.data) setReceipt(settings.data.settings.offer_receipt_after_save); }, [settings.data]);
@@ -50,7 +52,7 @@ export default function SeveForm() {
   }, [existing.data]);
 
   const paidTooMuch = !settings.data?.settings.allow_overpayment && paidNow.paise != null && prescribed.paise != null && paidNow.paise > prescribed.paise;
-  const valid = ritualId && devotee.trim() && prescribed.paise != null && date && !paidTooMuch && (paidNow.text === '' || paidNow.paise);
+  const valid = ritualId && devotee.trim() && prescribed.paise != null && date && !paidTooMuch && (paidNow.text === '' || paidNow.paise) && (editing || !receipt || !paidNow.paise || receiptNo.trim());
 
   const save = useSave(() => {
     const body = { ritual_id: ritualId, devotee_name: devotee, ritual_date: date, prescribed_amount: prescribed.paise, contact, notes, event_id: eventId || null };
@@ -59,6 +61,7 @@ export default function SeveForm() {
       ...body, id: ids.entry,
       initial_payment: paidNow.paise ? { id: ids.payment, amount: paidNow.paise, payment_date: todayIST(), payment_method: method } : null,
       issue_receipt: receipt,
+      receipt_number: receipt && paidNow.paise ? receiptNo.trim() : null,
     });
   }, { success: t('common.saved'), to: (r: any) => (r.receipt ? `/receipts/${r.receipt.id}` : `/seves/${editing ? id : ids.entry}`) });
 
@@ -106,6 +109,7 @@ export default function SeveForm() {
         )}
         <Field label={t('common.notes')} htmlFor="s-notes" optional><TextArea id="s-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('common.notesPlaceholder')} /></Field>
         {!editing && paidNow.paise ? <Card className="!bg-sand !shadow-none"><Toggle checked={receipt} onChange={setReceipt} label={t('rcpt.generateAfterSave')} /></Card> : null}
+        {!editing && paidNow.paise && receipt ? <ReceiptNumberField id="s-rno" value={receiptNo} onChange={setReceiptNo} touched={touched} /> : null}
         <Button type="submit" size="lg" block loading={save.isPending}>{t('common.save')}</Button>
       </form>
     </Page>

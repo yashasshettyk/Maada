@@ -7,6 +7,7 @@ import { todayIST } from '../../shared/dates';
 import { amountInKannadaWords } from '../../shared/words-kn';
 import { amountInWords } from '../../shared/words';
 import { AmountInput, Button, Field, Select, TextArea, TextInput, useAmount } from '../components/ui';
+import { ReceiptNumberField } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 import { MethodSelect } from '../components/MethodSelect';
 import { RitualSelect } from '../components/RitualSelect';
@@ -26,6 +27,7 @@ export default function SeveQuick() {
   const [notes, setNotes] = useState('');
   const amount = useAmount();
   const [touched, setTouched] = useState(false);
+  const [receiptNo, setReceiptNo] = useState('');
 
   useEffect(() => {
     if (!ritualId && rituals.data?.length) {
@@ -35,13 +37,14 @@ export default function SeveQuick() {
     }
   }, [rituals.data, ritualId, amount]);
 
-  const valid = ritualId && devotee.trim() && amount.paise && seveDate && paidOn;
+  const valid = ritualId && devotee.trim() && amount.paise && seveDate && paidOn && receiptNo.trim();
   const save = useSave(
     () => post('/ritual-entries', {
       id: ids.entry, ritual_id: ritualId, devotee_name: devotee, ritual_date: seveDate, prescribed_amount: amount.paise,
       notes, event_id: eventId || null,
       initial_payment: { id: ids.payment, amount: amount.paise, payment_date: paidOn, payment_method: method },
       issue_receipt: true,
+      receipt_number: receiptNo.trim(),
     }),
     { success: t('common.saved'), to: (r: any) => (r.receipt ? `/receipts/${r.receipt.id}` : `/seves/${ids.entry}`) },
   );
@@ -74,6 +77,7 @@ export default function SeveQuick() {
             </Select>
           </Field>
         )}
+        <ReceiptNumberField id="q-rno" value={receiptNo} onChange={setReceiptNo} touched={touched} />
         <Field label={t('common.notes')} htmlFor="q-notes" optional><TextArea id="q-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('common.notesPlaceholder')} /></Field>
         <Button type="submit" size="lg" block loading={save.isPending}>{t('rcpt.create')}</Button>
       </form>

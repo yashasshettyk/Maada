@@ -16,7 +16,7 @@ const fields = {
   notes: optText(1000),
   event_id: uuid.nullish().transform((v) => v ?? null),
 };
-const createBody = z.object({ id: uuid, ...fields, issue_receipt: z.boolean().optional() });
+const createBody = z.object({ id: uuid, ...fields, issue_receipt: z.boolean().optional(), receipt_number: z.string().max(40).nullish() });
 const updateBody = z.object(fields);
 
 async function syncLedger(q: Queryable, d: Record<string, any>) {
@@ -76,7 +76,7 @@ export function donationRoutes(db: Database) {
       const d = inserted[0];
       await syncLedger(q, d);
       await audit(q, 'donation', d.id, 'create', null, d);
-      const receipt = body.issue_receipt ? await issueReceipt(q, 'donation', d.id) : null;
+      const receipt = body.issue_receipt ? await issueReceipt(q, 'donation', d.id, { receiptNumber: body.receipt_number ?? '' }) : null;
       return { item: d, receipt, duplicate: false };
     });
     return c.json(result, result.duplicate ? 200 : 201);

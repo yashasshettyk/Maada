@@ -114,12 +114,15 @@ export function eventRoutes(db: Database) {
 
   app.delete('/events/:id', async (c) => {
     const id = parse(uuid, c.req.param('id'));
-    const [{ n }] = await db.query<{ n: number }>(
-      `SELECT ((SELECT COUNT(*) FROM expenses WHERE event_id = $1) + (SELECT COUNT(*) FROM incomes WHERE event_id = $1))::int AS n`, [id]);
-    if (n > 0) throw conflict('This event still has expenses or income. Delete or move them first.');
     await db.tx(async (q) => {
+      const [before] = await q.query('SELECT * FROM events WHERE id = $1 FOR UPDATE', [id]);
+      if (!before) throw notFound('Event');
+      // Expenses and income stay in the books; they are just no longer linked to the event.
+      await q.query('UPDATE expenses SET event_id = NULL WHERE event_id = $1', [id]);
+      await q.query('UPDATE incomes SET event_id = NULL WHERE event_id = $1', [id]);
       await cancelActiveReceipt(q, 'event', id, 'Event was deleted');
       await q.query('DELETE FROM events WHERE id = $1', [id]);
+      await audit(q, 'event', id, 'delete', before, null);
     });
     return c.json({ ok: true });
   });
@@ -128,14 +131,15 @@ export function eventRoutes(db: Database) {
   app.post('/events/:id/bill', async (c) => {
     const id = parse(uuid, c.req.param('id'));
     const refresh = c.req.query('refresh') === '1';
+    const body = parse(z.object({ receipt_number: z.string().max(40).nullish() }), await c.req.json().catch(() => ({})));
     const bill = await db.tx(async (q) => {
       const [ev] = await q.query('SELECT id FROM events WHERE id = $1 FOR UPDATE', [id]);
       if (!ev) throw notFound('Event');
       if (refresh) {
         const old = await cancelActiveReceipt(q, 'event', id, 'Replaced by an updated bill');
-        return issueReceipt(q, 'expense_bill', id, { replacesId: old?.id });
+        return issueReceipt(q, 'expense_bill', id, { receiptNumber: body.receipt_number || old?.receipt_number || '', replacesId: old?.id });
       }
-      return issueReceipt(q, 'expense_bill', id);
+      return issueReceipt(q, 'expense_bill', id, { receiptNumber: body.receipt_number ?? '' });
     });
     return c.json({ receipt: bill });
   });

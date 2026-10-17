@@ -9,6 +9,7 @@ import { amountInWords } from '../../shared/words';
 import { amountInKannadaWords } from '../../shared/words-kn';
 import { formatTimestamp } from '../../shared/dates';
 import { Badge, Button, ConfirmDialog, DetailList, ErrorState, IconButton, IconTile, List, ListRow, Money, SectionTitle, Skeleton } from '../components/ui';
+import { ReceiptNumberSheet } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 import { useMethodLabel } from '../components/MethodSelect';
 
@@ -20,7 +21,8 @@ export default function DonationDetail() {
   const [confirm, setConfirm] = useState(false);
   const q = useQuery({ queryKey: ['donation', id], queryFn: () => get(`/donations/${id}`) });
   const remove = useSave(() => del(`/donations/${id}`), { success: t('common.deleted'), to: () => '/donations' });
-  const issue = useSave(() => post('/receipts', { receipt_type: 'donation', source_id: id }), { to: (r: any) => `/receipts/${r.item.id}`, replace: false });
+  const [issueOpen, setIssueOpen] = useState(false);
+  const issue = useSave((number: string) => post('/receipts', { receipt_type: 'donation', source_id: id, receipt_number: number }), { to: (r: any) => `/receipts/${r.item.id}`, replace: false, onDone: () => setIssueOpen(false) });
   const d = q.data?.item;
   const receipts: any[] = q.data?.receipts ?? [];
   const active = receipts.find((r) => r.status === 'issued');
@@ -42,7 +44,7 @@ export default function DonationDetail() {
           {active ? (
             <Button size="lg" block icon={<ReceiptText className="size-5" />} onClick={() => navigate(`/receipts/${active.id}`)}>{t('rcpt.view')}</Button>
           ) : (
-            <Button size="lg" block variant="gold" icon={<ReceiptText className="size-5" />} loading={issue.isPending} onClick={() => issue.mutate(undefined)}>{t('rcpt.create')}</Button>
+            <Button size="lg" block variant="gold" icon={<ReceiptText className="size-5" />} onClick={() => setIssueOpen(true)}>{t('rcpt.create')}</Button>
           )}
           <DetailList rows={[
             { label: t('common.date'), value: date(d.donation_date) },
@@ -70,6 +72,7 @@ export default function DonationDetail() {
       )}
       <ConfirmDialog open={confirm} onClose={() => setConfirm(false)} title={t('don.delete')} message={t('don.deleteHint')}
         confirmLabel={t('common.delete')} loading={remove.isPending} onConfirm={() => remove.mutate(undefined)} />
+      <ReceiptNumberSheet open={issueOpen} onClose={() => setIssueOpen(false)} loading={issue.isPending} onSubmit={(number) => issue.mutate(number)} />
     </Page>
   );
 }

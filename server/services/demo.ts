@@ -34,7 +34,7 @@ export async function seedDemo(app: Hono, db: Database, headers: Record<string, 
     ['Sujatha Bhandary', 100100, 'General donation', 12],
   ] as const) {
     const id = randomUUID();
-    await call('POST', '/donations', { id, donor_name: name, donation_date: day(offset), amount, purpose, payment_method: 'Cash', issue_receipt: true });
+    await call('POST', '/donations', { id, donor_name: name, donation_date: day(offset), amount, purpose, payment_method: 'Cash', issue_receipt: true, receipt_number: `DEMO-D${ids.donations.length + 1}` });
     ids.donations.push(id);
   }
 
@@ -42,14 +42,14 @@ export async function seedDemo(app: Hono, db: Database, headers: Record<string, 
     const id = randomUUID();
     await call('POST', '/ritual-entries', {
       id, ritual_id: sankranti, devotee_name: name, ritual_date: day(offset), prescribed_amount: amount, event_id: ev,
-      initial_payment: { id: randomUUID(), amount, payment_date: day(offset) }, issue_receipt: true,
+      initial_payment: { id: randomUUID(), amount, payment_date: day(offset) }, issue_receipt: true, receipt_number: `DEMO-S${ids.entries.length + 1}`,
     });
     ids.entries.push(id);
   }
   const partial = randomUUID();
   await call('POST', '/ritual-entries', {
     id: partial, ritual_id: sankranti, devotee_name: 'Sudha Kamath', ritual_date: day(-28), prescribed_amount: 200000,
-    initial_payment: { id: randomUUID(), amount: 100000, payment_date: day(0) }, issue_receipt: true,
+    initial_payment: { id: randomUUID(), amount: 100000, payment_date: day(0) }, issue_receipt: true, receipt_number: 'DEMO-S9',
   });
   ids.entries.push(partial);
 

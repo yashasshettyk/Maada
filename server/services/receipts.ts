@@ -2,7 +2,8 @@ import type { Queryable } from '../db/types.js';
 import { todayIST } from '../../shared/dates.js';
 import { amountInWords } from '../../shared/words.js';
 import { amountInKannadaWords } from '../../shared/words-kn.js';
-import { notFound } from '../lib/http.js';
+import { conflict, invalid, notFound } from '../lib/http.js';
+import { currentBalance } from './ledger.js';
 
 export type ReceiptType = 'donation' | 'ritual_payment' | 'expense_bill';
 type SourceType = 'donation' | 'ritual_payment' | 'event';
@@ -99,10 +100,12 @@ async function buildSnapshot(q: Queryable, type: ReceiptType, sourceId: string, 
     `SELECT x.title, x.vendor, x.quantity, x.unit_rate, x.amount, c.name AS category
        FROM expenses x JOIN categories c ON c.id = x.category_id
       WHERE x.event_id = $1 ORDER BY x.expense_date, x.created_at`, [sourceId]);
-  const totals = (await q.query<{ income: number; expense: number }>(
-    `SELECT COALESCE(SUM(amount) FILTER (WHERE transaction_type = 'income'), 0)::bigint AS income,
-            COALESCE(SUM(amount) FILTER (WHERE transaction_type = 'expense'), 0)::bigint AS expense
+  const totals = (await q.query<{ expense: number }>(
+    `SELECT COALESCE(SUM(amount) FILTER (WHERE transaction_type = 'expense'), 0)::bigint AS expense
        FROM transactions WHERE event_id = $1`, [sourceId]))[0];
+  // The bill is paid from the temple's whole fund, so start from the money that was
+  // available before this event's expenses were taken out.
+  const available = (await currentBalance(q)) + Number(totals.expense);
   return {
     date: todayIST(),
     snapshot: {
@@ -115,8 +118,9 @@ async function buildSnapshot(q: Queryable, type: ReceiptType, sourceId: string, 
       })),
       total: totals.expense,
       total_words_en: amountInWords(totals.expense),
-      income: totals.income,
-      balance: totals.income - totals.expense,
+      income: available,
+      income_basis: 'available_balance',
+      balance: available - totals.expense,
     },
   };
 }
@@ -126,11 +130,23 @@ export async function activeReceipt(q: Queryable, sourceType: SourceType, source
     `SELECT * FROM receipts WHERE source_type = $1 AND source_id = $2 AND status = 'issued'`, [sourceType, sourceId]))[0] ?? null;
 }
 
+/** Check a user-entered receipt number and make sure no valid receipt of this kind already uses it. */
+async function claimNumber(q: Queryable, type: ReceiptType, raw: string): Promise<string> {
+  const number = raw.trim();
+  if (!number) throw invalid('Enter the receipt number');
+  if (number.length > 40) throw invalid('Receipt number is too long (40 characters at most)');
+  const [taken] = await q.query<{ id: string }>(
+    `SELECT id FROM receipts WHERE receipt_type = $1 AND lower(receipt_number) = lower($2) AND status = 'issued'`, [type, number]);
+  if (taken) throw conflict(`Receipt number ${number} is already used. Enter a different number.`);
+  return number;
+}
+
 /**
- * Issue a receipt for a saved record. Idempotent: if a valid receipt already exists
- * for the record it is returned unchanged rather than numbering a second one.
+ * Issue a receipt for a saved record using the number the user entered (an automatic
+ * number is used only when none is given, e.g. for sample data). Idempotent: if a
+ * valid receipt already exists for the record it is returned unchanged.
  */
-export async function issueReceipt(q: Queryable, type: ReceiptType, sourceId: string, opts: { replacesId?: string; isDemo?: boolean } = {}) {
+export async function issueReceipt(q: Queryable, type: ReceiptType, sourceId: string, opts: { receiptNumber?: string | null; replacesId?: string; isDemo?: boolean } = {}) {
   const sourceType = SOURCE_OF[type];
   const existing = await activeReceipt(q, sourceType, sourceId);
   if (existing) return existing;
@@ -138,7 +154,9 @@ export async function issueReceipt(q: Queryable, type: ReceiptType, sourceId: st
   const { date, snapshot } = await buildSnapshot(q, type, sourceId, s);
   const issueDate = todayIST();
   const prefix = type === 'donation' ? s.donation_prefix : type === 'ritual_payment' ? s.seve_prefix : s.bill_prefix;
-  const number = await nextReceiptNumber(q, type, prefix, Number(issueDate.slice(0, 4)));
+  const number = opts.receiptNumber != null
+    ? await claimNumber(q, type, opts.receiptNumber)
+    : await nextReceiptNumber(q, type, prefix, Number(issueDate.slice(0, 4)));
   const rows = await q.query<Record<string, any>>(
     `INSERT INTO receipts (receipt_number, receipt_type, source_type, source_id, issue_date, snapshot_data, replaces_receipt_id, is_demo)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
@@ -157,9 +175,12 @@ export async function cancelActiveReceipt(q: Queryable, sourceType: SourceType, 
   return rows[0] ?? null;
 }
 
-/** After a record is corrected, cancel its old receipt and issue a fresh one that references it. */
-export async function reissueIfIssued(q: Queryable, type: ReceiptType, sourceId: string, reason: string) {
+/**
+ * After a record is corrected, cancel its old receipt and issue a fresh one that references it.
+ * The new receipt keeps the old number unless a different one is given.
+ */
+export async function reissueIfIssued(q: Queryable, type: ReceiptType, sourceId: string, reason: string, receiptNumber?: string | null) {
   const old = await cancelActiveReceipt(q, SOURCE_OF[type], sourceId, reason);
-  if (old) return issueReceipt(q, type, sourceId, { replacesId: old.id, isDemo: old.is_demo });
+  if (old) return issueReceipt(q, type, sourceId, { receiptNumber: receiptNumber || old.receipt_number, replacesId: old.id, isDemo: old.is_demo });
   return null;
 }

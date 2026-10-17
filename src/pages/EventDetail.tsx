@@ -7,6 +7,7 @@ import { useI18n } from '../lib/i18n';
 import { useSave } from '../lib/forms';
 import type { StringKey } from '../lib/strings';
 import { Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, List, ListRow, Money, SectionTitle, Skeleton } from '../components/ui';
+import { ReceiptNumberSheet } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 
 export default function EventDetail() {
@@ -16,7 +17,8 @@ export default function EventDetail() {
   const [confirm, setConfirm] = useState(false);
   const q = useQuery({ queryKey: ['event', id], queryFn: () => get(`/events/${id}`) });
   const remove = useSave(() => del(`/events/${id}`), { success: t('common.deleted'), to: () => '/events' });
-  const bill = useSave((refresh: boolean) => post(`/events/${id}/bill${refresh ? '?refresh=1' : ''}`), { to: (r: any) => `/receipts/${r.receipt.id}`, replace: false });
+  const [billOpen, setBillOpen] = useState(false);
+  const bill = useSave((v: { refresh: boolean; number?: string }) => post(`/events/${id}/bill${v.refresh ? '?refresh=1' : ''}`, { receipt_number: v.number ?? null }), { to: (r: any) => `/receipts/${r.receipt.id}`, replace: false, onDone: () => setBillOpen(false) });
   const ev = q.data?.item;
   const totals = q.data?.totals;
   return (
@@ -39,11 +41,11 @@ export default function EventDetail() {
             {q.data.bill ? (
               <Button variant="gold" icon={<FileText className="size-5" />} onClick={() => navigate(`/receipts/${q.data.bill.id}`)}>{t('ev.billView')}</Button>
             ) : (
-              <Button variant="gold" icon={<FileText className="size-5" />} disabled={!q.data.expenses.length} loading={bill.isPending} onClick={() => bill.mutate(false)}>{t('ev.billCreate')}</Button>
+              <Button variant="gold" icon={<FileText className="size-5" />} disabled={!q.data.expenses.length} onClick={() => setBillOpen(true)}>{t('ev.billCreate')}</Button>
             )}
           </div>
           {q.data.bill && (
-            <Button variant="ghost" size="sm" icon={<RefreshCw className="size-4" />} loading={bill.isPending} onClick={() => bill.mutate(true)}>{t('ev.billRefresh')}</Button>
+            <Button variant="ghost" size="sm" icon={<RefreshCw className="size-4" />} loading={bill.isPending} onClick={() => bill.mutate({ refresh: true })}>{t('ev.billRefresh')}</Button>
           )}
 
           <section className="flex flex-col gap-1.5">
@@ -86,6 +88,7 @@ export default function EventDetail() {
       )}
       <ConfirmDialog open={confirm} onClose={() => setConfirm(false)} title={t('ev.delete')} message={t('ev.deleteHint')}
         confirmLabel={t('common.delete')} loading={remove.isPending} onConfirm={() => remove.mutate(undefined)} />
+      <ReceiptNumberSheet open={billOpen} onClose={() => setBillOpen(false)} title={t('ev.billCreate')} loading={bill.isPending} onSubmit={(number) => bill.mutate({ refresh: false, number })} />
     </Page>
   );
 }

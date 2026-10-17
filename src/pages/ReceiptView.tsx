@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Ban, Download, FileDown, LoaderCircle, MessageCircle, RefreshCw, Share2, X } from 'lucide-react';
-import { get, post } from '../lib/api';
+import { Ban, Download, FileDown, LoaderCircle, MessageCircle, RefreshCw, Share2, Trash2, X } from 'lucide-react';
+import { del, get, post } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { useSave } from '../lib/forms';
 import { useSettings } from '../lib/data';
@@ -10,7 +10,8 @@ import { formatTimestamp } from '../../shared/dates';
 import { renderReceipt, type Rendered, type ReceiptRecord } from '../receipts/render';
 import { fileBase, toPdfBlob, toPngBlob } from '../receipts/export';
 import { saveFile, shareFile, shareToWhatsApp } from '../lib/native';
-import { Badge, Button, DetailList, ErrorState, Field, Sheet, Skeleton, TextArea, useToast } from '../components/ui';
+import { Badge, Button, ConfirmDialog, DetailList, ErrorState, Field, Sheet, Skeleton, TextArea, useToast } from '../components/ui';
+import { ReceiptNumberSheet } from '../components/ReceiptNumber';
 import { Page } from '../components/Shell';
 
 export default function ReceiptView() {
@@ -27,6 +28,9 @@ export default function ReceiptView() {
   const [full, setFull] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const [reissueOpen, setReissueOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!r) return;
@@ -50,7 +54,8 @@ export default function ReceiptView() {
   const cancel = useSave(() => post(`/receipts/${id}/cancel`, { reason }), {
     success: t('rcpt.cancelled'), onDone: () => { setCancelOpen(false); q.refetch(); },
   });
-  const reissue = useSave(() => post(`/receipts/${id}/reissue`), { to: (res: any) => `/receipts/${res.item.id}` });
+  const reissue = useSave((number: string) => post(`/receipts/${id}/reissue`, { receipt_number: number }), { to: (res: any) => `/receipts/${res.item.id}`, onDone: () => setReissueOpen(false) });
+  const remove = useSave(() => del(`/receipts/${id}`), { success: t('common.deleted'), onDone: () => { setDeleteOpen(false); navigate('/receipts', { replace: true }); } });
 
   const run = async (kind: 'share' | 'whatsapp' | 'png' | 'pdf') => {
     if (!rendered || !r) return;
@@ -129,8 +134,9 @@ export default function ReceiptView() {
           {r.status === 'issued' ? (
             !isBill && <Button variant="danger" icon={<Ban className="size-5" />} onClick={() => setCancelOpen(true)}>{t('rcpt.cancel')}…</Button>
           ) : q.data?.link && !q.data.related.some((x) => x.status === 'issued') ? (
-            <Button variant="secondary" icon={<RefreshCw className="size-5" />} loading={reissue.isPending} onClick={() => reissue.mutate(undefined)}>{t('rcpt.reissue')}</Button>
+            <Button variant="secondary" icon={<RefreshCw className="size-5" />} onClick={() => setReissueOpen(true)}>{t('rcpt.reissue')}</Button>
           ) : null}
+          <Button variant="ghost" icon={<Trash2 className="size-5 text-expense" />} className="text-expense" onClick={() => setDeleteOpen(true)}>{t('rcpt.delete')}…</Button>
         </>
       )}
 
@@ -144,6 +150,9 @@ export default function ReceiptView() {
           <Button block disabled={!reason.trim()} loading={cancel.isPending} className="!bg-expense" onClick={() => cancel.mutate(undefined)}>{t('rcpt.cancel')}</Button>
         </div>
       </Sheet>
+
+      <ReceiptNumberSheet open={reissueOpen} onClose={() => setReissueOpen(false)} title={t('rcpt.reissue')} hint={t('rcpt.numberKeepHint')} initial={r?.receipt_number ?? ''} loading={reissue.isPending} onSubmit={(number) => reissue.mutate(number)} />
+      <ConfirmDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} title={t('rcpt.delete')} message={t('rcpt.deleteHint')} confirmLabel={t('common.delete')} loading={remove.isPending} onConfirm={() => remove.mutate(undefined)} />
 
       {full && preview && (
         <div role="dialog" aria-modal="true" aria-label={t('tx.receipt')} className="fixed inset-0 z-50 flex flex-col bg-[#140708]">

@@ -57,6 +57,16 @@ function OpeningBalance() {
     invalidate();
     qc.invalidateQueries({ queryKey: ['settings'] });
   };
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const remove = async () => {
+    setBusy(true);
+    await run(() => del('/settings/opening-balance'), t('common.deleted'));
+    setBusy(false);
+    setConfirmRemove(false);
+    amount.reset(null);
+    invalidate();
+    qc.invalidateQueries({ queryKey: ['settings'] });
+  };
   return (
     <Section id="opening" title={t('set.opening')} hint={t('set.openingHint')}>
       <Card className="flex flex-col gap-4 p-4">
@@ -65,7 +75,9 @@ function OpeningBalance() {
           <Field label={t('set.openingDate')} htmlFor="ob-date"><TextInput id="ob-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         </div>
         <Button disabled={amount.paise == null || !date} loading={busy} onClick={save}>{t('common.save')}</Button>
+        {settings.data?.opening_balance && <Button variant="ghost" className="text-expense" onClick={() => setConfirmRemove(true)}>{t('set.openingDelete')}</Button>}
       </Card>
+      <ConfirmDialog open={confirmRemove} onClose={() => setConfirmRemove(false)} title={t('set.openingDelete')} message={t('set.openingDeleteHint')} confirmLabel={t('common.delete')} loading={busy} onConfirm={remove} />
     </Section>
   );
 }

@@ -5,8 +5,10 @@ type Ctx = Awaited<ReturnType<typeof setup>>;
 let t: Ctx;
 beforeEach(async () => { t = await setup(); });
 
+let numberSeq = 0;
 const donation = (amount: number, extra: Record<string, unknown> = {}): Record<string, any> => ({
-  id: id(), donor_name: 'Yashas Shetty', donation_date: '2026-10-16', amount, purpose: 'Maada development', ...extra,
+  id: id(), donor_name: 'Yashas Shetty', donation_date: '2026-10-16', amount, purpose: 'Maada development',
+  ...(extra.issue_receipt ? { receipt_number: `T-${++numberSeq}` } : {}), ...extra,
 });
 const openWith = (amount: number) => t.ok('PUT', '/settings/opening-balance', { amount, date: '2026-04-01' });
 async function expense(amount: number) {
@@ -93,7 +95,7 @@ describe('central ledger', () => {
     await t.ok('POST', '/ritual-entries', {
       id: entryId, ritual_id: await t.sankranti(), devotee_name: 'Ramesh', ritual_date: '2026-10-20', prescribed_amount: 2_000 * RUPEE,
     });
-    const payment = { id: id(), amount: 1_000 * RUPEE, payment_date: '2026-10-01', issue_receipt: true };
+    const payment = { id: id(), amount: 1_000 * RUPEE, payment_date: '2026-10-01', issue_receipt: true, receipt_number: 'S-100' };
     const [a, b] = await Promise.all([
       t.call('POST', `/ritual-entries/${entryId}/payments`, payment),
       t.call('POST', `/ritual-entries/${entryId}/payments`, payment),
@@ -163,33 +165,49 @@ describe('central ledger', () => {
 });
 
 describe('receipts', () => {
-  it('scenario 9: a donation receipt carries the saved details and a unique number', async () => {
-    const d = donation(5_000 * RUPEE, { donor_name: 'ಯಶಸ್ ಶೆಟ್ಟಿ', purpose: 'For Maada Development and Temple Maintenance', issue_receipt: true });
+  it('scenario 9: a donation receipt carries the saved details and the number the user entered', async () => {
+    const d = donation(5_000 * RUPEE, { donor_name: 'ಯಶಸ್ ಶೆಟ್ಟಿ', purpose: 'For Maada Development and Temple Maintenance', issue_receipt: true, receipt_number: ' 1024 ' });
     const res = await t.ok('POST', '/donations', d);
     const snap = res.receipt.snapshot_data;
-    expect(res.receipt.receipt_number).toMatch(/^ದೇ-\d{4}-00001$/);
+    expect(res.receipt.receipt_number).toBe('1024');
+    expect(snap.receipt_number).toBe('1024');
     expect(snap.name).toBe('ಯಶಸ್ ಶೆಟ್ಟಿ');
     expect(snap.date).toBe('2026-10-16');
     expect(snap.amount).toBe(500_000);
     expect(snap.amount_words_en).toBe('Rupees Five Thousand Only');
     expect(snap.amount_words_kn).toBe('ಐದು ಸಾವಿರ ರೂಪಾಯಿಗಳು ಮಾತ್ರ');
     expect(snap.purpose).toBe('For Maada Development and Temple Maintenance');
-    const second = await t.ok('POST', '/donations', donation(100 * RUPEE, { issue_receipt: true }));
-    expect(second.receipt.receipt_number).toMatch(/-00002$/);
   });
 
-  it('numbers stay unique when many receipts are issued at once', async () => {
-    const results = await Promise.all(Array.from({ length: 12 }, () => t.ok('POST', '/donations', donation(100 * RUPEE, { issue_receipt: true }))));
-    const numbers = results.map((r) => r.receipt.receipt_number);
-    expect(new Set(numbers).size).toBe(12);
+  it('a receipt number is required and cannot be used twice', async () => {
+    const missing = await t.call('POST', '/donations', donation(100 * RUPEE, { issue_receipt: true, receipt_number: '' }));
+    expect(missing.status).toBe(422);
+    await t.ok('POST', '/donations', donation(100 * RUPEE, { issue_receipt: true, receipt_number: 'A-7' }));
+    const d = donation(100 * RUPEE, { issue_receipt: true, receipt_number: 'a-7' });
+    const dup = await t.call('POST', '/donations', d);
+    expect(dup.status).toBe(409);
+    // Nothing was half-saved: the same form can be sent again with a new number.
+    expect(await t.db.query('SELECT * FROM donations WHERE id = $1', [d.id])).toHaveLength(0);
+    await t.ok('POST', '/donations', { ...d, receipt_number: 'A-8' });
+  });
+
+  it('a receipt can be deleted permanently while the donation stays', async () => {
+    const d = donation(5_000 * RUPEE, { issue_receipt: true });
+    const first = await t.ok('POST', '/donations', d);
+    await t.ok('DELETE', `/receipts/${first.receipt.id}`);
+    expect((await t.call('GET', `/receipts/${first.receipt.id}`)).status).toBe(404);
+    expect(await t.balance()).toBe(5_000 * RUPEE);
+    const again = await t.ok('POST', '/receipts', { receipt_type: 'donation', source_id: d.id, receipt_number: d.receipt_number });
+    expect(again.item.receipt_number).toBe(d.receipt_number);
   });
 
   it('editing a donation keeps the old receipt as cancelled and issues a new one', async () => {
     const d = donation(5_000 * RUPEE, { issue_receipt: true });
     const first = await t.ok('POST', '/donations', d);
-    const { id: donationId, issue_receipt: _, ...fields } = d;
+    const { id: donationId, issue_receipt: _, receipt_number: __, ...fields } = d;
     const edited = await t.ok('PUT', `/donations/${donationId}`, { ...fields, amount: 6_000 * RUPEE });
-    expect(edited.receipt.receipt_number).not.toBe(first.receipt.receipt_number);
+    expect(edited.receipt.id).not.toBe(first.receipt.id);
+    expect(edited.receipt.receipt_number).toBe(first.receipt.receipt_number);
     expect(edited.receipt.replaces_receipt_id).toBe(first.receipt.id);
     const old = await t.ok('GET', `/receipts/${first.receipt.id}`);
     expect(old.item.status).toBe('cancelled');
@@ -208,16 +226,17 @@ describe('receipts', () => {
   it('seve receipt shows the seve title in Kannada, devotee and amount', async () => {
     const res = await t.ok('POST', '/ritual-entries', {
       id: id(), ritual_id: await t.sankranti(), devotee_name: 'ರಮೇಶ್ ಪೂಜಾರಿ', ritual_date: '2026-10-17', prescribed_amount: 500 * RUPEE,
-      initial_payment: { id: id(), amount: 500 * RUPEE, payment_date: '2026-10-14' }, issue_receipt: true,
+      initial_payment: { id: id(), amount: 500 * RUPEE, payment_date: '2026-10-14' }, issue_receipt: true, receipt_number: 'ಸೇ-12',
     });
     const s = res.receipt.snapshot_data;
-    expect(res.receipt.receipt_number).toMatch(/^ಸೇ-\d{4}-00001$/);
+    expect(res.receipt.receipt_number).toBe('ಸೇ-12');
     expect(s.title_kn).toBe('ಸಂಕ್ರಾಂತಿ ಸೇವೆ');
     expect(s.seve_date).toBe('2026-10-17');
     expect(s.amount_words_kn).toBe('ಐನೂರು ರೂಪಾಯಿಗಳು ಮಾತ್ರ');
   });
 
-  it('expense bill lists the event items with income and balance', async () => {
+  it('expense bill lists the event items against the available balance', async () => {
+    await openWith(10_000 * RUPEE);
     const ev = id();
     await t.ok('POST', '/events', { id: ev, name: 'Sankranti Seve', event_date: '2026-10-17' });
     await t.ok('POST', '/expenses', { id: id(), title: 'Jasmine flowers', quantity: '4 bundles', unit_rate: 25_000, amount: 100_000, expense_date: '2026-10-17', category_id: await t.category('Flowers'), event_id: ev, vendor: 'Flower market' });
@@ -226,16 +245,30 @@ describe('receipts', () => {
       id: id(), ritual_id: await t.sankranti(), devotee_name: 'Ganesh', ritual_date: '2026-10-17', prescribed_amount: 500 * RUPEE, event_id: ev,
       initial_payment: { id: id(), amount: 500 * RUPEE, payment_date: '2026-10-17' },
     });
-    const { receipt } = await t.ok('POST', `/events/${ev}/bill`);
-    expect(receipt.receipt_number).toMatch(/^EXP-\d{4}-00001$/);
+    const { receipt } = await t.ok('POST', `/events/${ev}/bill`, { receipt_number: 'B-1' });
+    expect(receipt.receipt_number).toBe('B-1');
     expect(receipt.snapshot_data.items).toHaveLength(2);
     expect(receipt.snapshot_data.total).toBe(187_500);
-    expect(receipt.snapshot_data.income).toBe(50_000);
-    expect(receipt.snapshot_data.balance).toBe(50_000 - 187_500);
-    const again = await t.ok('POST', `/events/${ev}/bill`);
+    // Available = opening 10,000 + seve 500 (the whole fund before this bill's expenses).
+    expect(receipt.snapshot_data.income).toBe(1_050_000);
+    expect(receipt.snapshot_data.balance).toBe(1_050_000 - 187_500);
+    expect(receipt.snapshot_data.balance).toBe(await t.balance());
+    const again = await t.ok('POST', `/events/${ev}/bill`, {});
     expect(again.receipt.id).toBe(receipt.id);
-    const refreshed = await t.ok('POST', `/events/${ev}/bill?refresh=1`);
-    expect(refreshed.receipt.receipt_number).toMatch(/-00002$/);
+    const refreshed = await t.ok('POST', `/events/${ev}/bill?refresh=1`, {});
+    expect(refreshed.receipt.id).not.toBe(receipt.id);
+    expect(refreshed.receipt.receipt_number).toBe('B-1');
+  });
+
+  it('deleting an event keeps its expenses in the books', async () => {
+    const ev = id();
+    await t.ok('POST', '/events', { id: ev, name: 'Deepotsava', event_date: '2026-10-17' });
+    const x = { id: id(), title: 'Oil', amount: 50_000, expense_date: '2026-10-17', category_id: await t.category('Pooja Materials'), event_id: ev };
+    await t.ok('POST', '/expenses', x);
+    await t.ok('DELETE', `/events/${ev}`);
+    const after = await t.ok('GET', `/expenses/${x.id}`);
+    expect(after.item.event_id).toBeNull();
+    expect(await t.balance()).toBe(-50_000);
   });
 });
 
@@ -292,7 +325,7 @@ describe('persistence, backup and demo data', () => {
     const first = await open();
     const req = (app: any, method: string, p: string, body?: unknown) => app.request(`/api${p}`, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then((r: Response) => r.json());
     await req(first.app, 'PUT', '/settings/opening-balance', { amount: 5_000_000, date: '2026-04-01' });
-    const created = await req(first.app, 'POST', '/donations', { ...donation(500_000), issue_receipt: true });
+    const created = await req(first.app, 'POST', '/donations', { ...donation(500_000), issue_receipt: true, receipt_number: 'P-1' });
     await first.db.close();
     const second = await open();
     expect((await req(second.app, 'GET', '/dashboard')).balance).toBe(5_500_000);
@@ -314,10 +347,9 @@ describe('persistence, backup and demo data', () => {
     expect(r.status).toBe(200);
     expect((await fresh.ok('GET', '/dashboard')).balance).toBe(before.balance);
     expect((await fresh.ok('GET', '/admin/integrity')).ok).toBe(true);
-    // Numbering continues after a restore instead of repeating.
-    const next = await fresh.ok('POST', '/donations', { ...donation(100), issue_receipt: true });
-    const numbers = (backup.tables.receipts as any[]).map((x) => x.receipt_number);
-    expect(numbers).not.toContain(next.receipt.receipt_number);
+    // Restored receipt numbers stay taken.
+    const taken = (backup.tables.receipts as any[]).find((x) => x.status === 'issued' && x.receipt_type === 'donation').receipt_number;
+    expect((await fresh.call('POST', '/donations', { ...donation(100), issue_receipt: true, receipt_number: taken })).status).toBe(409);
   });
 
   it('rejects a tampered backup without changing anything', async () => {

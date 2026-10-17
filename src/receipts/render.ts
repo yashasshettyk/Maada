@@ -351,13 +351,13 @@ export async function renderExpenseBill(r: ReceiptRecord, dateFormat: Parameters
     ctx.save(); ctx.strokeStyle = '#CDBB98'; ctx.lineWidth = 1.5; ctx.setLineDash([1.5, 3.5]);
     ctx.beginPath(); ctx.moveTo(a, yy + 6); ctx.lineTo(b, yy + 6); ctx.stroke(); ctx.restore();
   };
-  leader('Income received', formatINR(s.income), '#1F7A52', y + 11);
+  leader(s.income_basis === 'available_balance' ? 'Available balance' : 'Income received', formatINR(s.income), '#1F7A52', y + 11);
   y += 32;
   leader('Total expense', `− ${formatINR(s.total)}`, '#B23E3E', y + 11);
   y += 36;
   ctx.fillStyle = '#4A1418';
   ctx.beginPath(); ctx.roundRect(L, y, R - L, 48, 4); ctx.fill();
-  text(ctx, 'Balance', L + 16, y + 24, M(15, 700, '#E2C68F'));
+  text(ctx, s.income_basis === 'available_balance' ? 'Balance after expenses' : 'Balance', L + 16, y + 24, M(15, 700, '#E2C68F'));
   text(ctx, (s.balance < 0 ? '−' : '') + formatINR(Math.abs(s.balance)), R - 16, y + 24, M(20, 800, '#FFFFFF', 'right'));
 
   // Footer
