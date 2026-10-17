@@ -394,6 +394,17 @@ export const en = {
   'set.about': 'About',
   'set.server': 'Server',
   'set.saved': 'Settings saved',
+  'srv.title': 'Connect to the Maada server',
+  'srv.hint': 'Enter the server address and access key once. Ask the person who set up the app if you do not have them.',
+  'srv.url': 'Server address',
+  'srv.urlPlaceholder': 'your-project.vercel.app',
+  'srv.key': 'Access key',
+  'srv.keyHint': 'The MAADA_API_KEY value from Vercel',
+  'srv.connect': 'Check and connect',
+  'srv.connected': 'Connected to the server',
+  'srv.section': 'Server connection',
+  'srv.change': 'Change server',
+  'srv.notSet': 'Not connected',
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -779,4 +790,15 @@ export const kn: Record<StringKey, string> = {
   'set.about': 'ಆ್ಯಪ್ ಬಗ್ಗೆ',
   'set.server': 'ಸರ್ವರ್',
   'set.saved': 'ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಉಳಿಸಲಾಗಿದೆ',
+  'srv.title': 'ಮಾಡದ ಸರ್ವರ್‌ಗೆ ಸಂಪರ್ಕಿಸಿ',
+  'srv.hint': 'ಸರ್ವರ್ ವಿಳಾಸ ಮತ್ತು ಪ್ರವೇಶ ಕೀಲಿಯನ್ನು ಒಮ್ಮೆ ನಮೂದಿಸಿ. ಇವು ಇಲ್ಲದಿದ್ದರೆ ಆ್ಯಪ್ ಸಿದ್ಧಪಡಿಸಿದವರನ್ನು ಕೇಳಿ.',
+  'srv.url': 'ಸರ್ವರ್ ವಿಳಾಸ',
+  'srv.urlPlaceholder': 'your-project.vercel.app',
+  'srv.key': 'ಪ್ರವೇಶ ಕೀಲಿ',
+  'srv.keyHint': 'Vercel ನಲ್ಲಿರುವ MAADA_API_KEY ಮೌಲ್ಯ',
+  'srv.connect': 'ಪರಿಶೀಲಿಸಿ ಸಂಪರ್ಕಿಸಿ',
+  'srv.connected': 'ಸರ್ವರ್‌ಗೆ ಸಂಪರ್ಕವಾಗಿದೆ',
+  'srv.section': 'ಸರ್ವರ್ ಸಂಪರ್ಕ',
+  'srv.change': 'ಸರ್ವರ್ ಬದಲಿಸಿ',
+  'srv.notSet': 'ಸಂಪರ್ಕವಿಲ್ಲ',
 };

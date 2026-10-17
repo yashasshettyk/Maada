@@ -1,7 +1,44 @@
 /** Thin client for the Maada API. Every response error becomes an ApiError with a readable message. */
 
-const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const KEY = import.meta.env.VITE_API_KEY as string | undefined;
+const ENV_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+const ENV_KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? '';
+const SERVER_KEY = 'maada.server';
+
+export interface ServerConfig { url: string; key: string }
+
+/** Server address and access key: saved on this device (set in the app), else the build-time defaults. */
+export function getServer(): ServerConfig {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SERVER_KEY) ?? 'null');
+    if (saved?.url) return { url: String(saved.url), key: String(saved.key ?? '') };
+  } catch { /* storage unavailable */ }
+  return { url: ENV_BASE, key: ENV_KEY };
+}
+
+export function setServer(cfg: ServerConfig) {
+  localStorage.setItem(SERVER_KEY, JSON.stringify({ url: normaliseUrl(cfg.url), key: cfg.key.trim() }));
+}
+
+export function normaliseUrl(url: string) {
+  let u = url.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  if (u && !/^https?:\/\//i.test(u)) u = `https://${u}`;
+  return u;
+}
+
+/** Check a server address and key before saving them. Throws a readable error. */
+export async function testServer(cfg: ServerConfig) {
+  const base = normaliseUrl(cfg.url);
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/settings`, { headers: cfg.key ? { 'x-maada-key': cfg.key.trim() } : {} });
+  } catch {
+    throw new ApiError(0, 'network', 'Could not reach this address. Check it and your internet connection.');
+  }
+  if (res.status === 401) throw new ApiError(401, 'unauthorized', 'The server is reachable but the access key is wrong.');
+  if (!res.ok) throw new ApiError(res.status, 'http_error', `The server answered with an error (${res.status}).`);
+  const body = await res.json().catch(() => null);
+  if (!body?.settings) throw new ApiError(0, 'not_maada', 'This address does not look like the Maada server.');
+}
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -10,7 +47,7 @@ export class ApiError extends Error {
 }
 
 export function apiUrl(path: string) {
-  return `${BASE}/api${path}`;
+  return `${getServer().url}/api${path}`;
 }
 
 export async function api<T = any>(path: string, init: RequestInit & { json?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
@@ -21,7 +58,7 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
       ...rest,
       headers: {
         ...(json !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(KEY ? { 'x-maada-key': KEY } : {}),
+        ...(getServer().key ? { 'x-maada-key': getServer().key } : {}),
         ...headers,
       },
       body: json !== undefined ? JSON.stringify(json) : rest.body,

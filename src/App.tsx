@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { ToastProvider, Skeleton } from './components/ui';
 import { BottomNav, TAB_ROOTS, useAndroidBack } from './components/Shell';
-import { ApiError } from './lib/api';
+import { ApiError, getServer } from './lib/api';
+import { isNative } from './lib/native';
+import { ServerSetupScreen } from './components/ServerConnect';
 import { useSettings } from './lib/data';
 import { Dashboard } from './pages/Dashboard';
 
@@ -110,6 +112,19 @@ function Routed() {
 }
 
 function WithSettings() {
+  // The Android app needs a server address; the web app uses its own origin.
+  const [configured, setConfigured] = useState(() => !isNative() || Boolean(getServer().url));
+  if (!configured) {
+    return (
+      <I18nProvider>
+        <ServerSetupScreen onDone={() => { queryClient.clear(); setConfigured(true); }} />
+      </I18nProvider>
+    );
+  }
+  return <Configured />;
+}
+
+function Configured() {
   const settings = useSettings();
   return (
     <I18nProvider dateFormat={settings.data?.settings.date_format}>

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DatabaseBackup, FileUp, Languages, Pencil, Plus, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
-import { ApiError, api, del, get, patch, post, put } from '../lib/api';
+import { ApiError, api, del, get, getServer, patch, post, put } from '../lib/api';
+import { ServerForm } from '../components/ServerConnect';
 import { useI18n } from '../lib/i18n';
 import { useCategories, useInvalidateMoney, useRituals, useSettings, type Ritual, type Settings as S } from '../lib/data';
 import { todayIST } from '../../shared/dates';
@@ -354,6 +355,25 @@ function DataTools() {
   );
 }
 
+function ServerSection() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const url = getServer().url || window.location.origin;
+  return (
+    <Section id="server" title={t('srv.section')}>
+      <Card className="flex items-center justify-between gap-3 p-4">
+        <span className="min-w-0 truncate text-[13px] font-semibold text-ink-soft">{url}</span>
+        <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>{t('srv.change')}</Button>
+      </Card>
+      <Sheet open={open} onClose={() => setOpen(false)} title={t('srv.section')}>
+        <ServerForm onDone={() => { setOpen(false); toast(t('srv.connected')); qc.invalidateQueries(); }} />
+      </Sheet>
+    </Section>
+  );
+}
+
 export default function Settings() {
   const { t } = useI18n();
   const settings = useSettings();
@@ -374,10 +394,10 @@ export default function Settings() {
           <SeveTypes />
           <Categories />
           <DataTools />
+          <ServerSection />
           <Section title={t('set.about')}>
             <Card className="flex flex-col gap-1 p-4 text-[13px] text-muted">
               <span className="font-bold text-ink">{s.institution_name}</span>
-              <span>{t('set.server')}: {import.meta.env.VITE_API_BASE_URL || window.location.origin}</span>
               <span>v1.0.0</span>
             </Card>
           </Section>
