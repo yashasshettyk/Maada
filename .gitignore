@@ -6,3 +6,5 @@ dist/
 *.log
 android/app/build/
 android/.gradle/
+.env.android
+.env.production

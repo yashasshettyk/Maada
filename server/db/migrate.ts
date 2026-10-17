@@ -1,9 +1,20 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Database } from './types.js';
 
-const MIGRATIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../db/migrations');
+// Next to the source in development; in the working directory when bundled as a serverless function.
+const CANDIDATES = [
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../db/migrations'),
+  path.resolve(process.cwd(), 'db/migrations'),
+];
+
+async function migrationsDir(): Promise<string> {
+  for (const dir of CANDIDATES) {
+    try { await access(dir); return dir; } catch { /* try next */ }
+  }
+  throw new Error(`Migrations folder not found (looked in ${CANDIDATES.join(', ')})`);
+}
 
 /** Apply any pending SQL migrations in filename order, each inside its own transaction. */
 export async function migrate(db: Database, log: (msg: string) => void = () => undefined): Promise<string[]> {
@@ -12,6 +23,7 @@ export async function migrate(db: Database, log: (msg: string) => void = () => u
     applied_at timestamptz NOT NULL DEFAULT now()
   )`);
   const applied = new Set((await db.query<{ name: string }>('SELECT name FROM schema_migrations')).map((r) => r.name));
+  const MIGRATIONS_DIR = await migrationsDir();
   const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
   const ran: string[] = [];
   for (const file of files) {

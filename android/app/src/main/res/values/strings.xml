@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Beeramarlara Maada</string>
+    <string name="title_activity_main">Beeramarlara Maada</string>
+    <string name="package_name">org.adka.maada</string>
+    <string name="custom_url_scheme">org.adka.maada</string>
+</resources>

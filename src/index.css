@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  --color-maroon: #641e2b;
+  --color-maroon-deep: #4a1418;
+  --color-oxblood: #3a1013;
+  --color-burgundy: #7a263a;
+  --color-gold: #b89455;
+  --color-gold-light: #e2c68f;
+  --color-gold-ink: #8a6a35;
+  --color-ivory: #faf7f0;
+  --color-paper: #fffdf8;
+  --color-beige: #efe7d8;
+  --color-sand: #f6eee0;
+  --color-line: #ece3d3;
+  --color-ink: #292725;
+  --color-ink-soft: #4a4643;
+  --color-muted: #6b6763;
+  --color-income: #1f7a52;
+  --color-income-bg: #e3f1ea;
+  --color-expense: #b23e3e;
+  --color-expense-bg: #f6e1e1;
+  --color-pending: #8a5a12;
+  --color-pending-bg: #f7ebd4;
+  --color-seal: #3f3787;
+  --color-seal-bg: #e6e4f3;
+  --font-sans: "Manrope Variable", "Noto Sans Kannada", system-ui, sans-serif;
+  --font-kn: "Noto Sans Kannada", "Manrope Variable", system-ui, sans-serif;
+  --font-serif-kn: "Noto Serif Kannada", serif;
+  --shadow-card: 0 1px 2px rgb(41 39 37 / 0.04), 0 4px 16px rgb(41 39 37 / 0.04);
+  --shadow-float: 0 10px 28px rgb(100 30 43 / 0.28);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-ivory text-ink font-sans antialiased;
+    overscroll-behavior-y: none;
+  }
+  :lang(kn) body, [lang="kn"] {
+    line-height: 1.55;
+  }
+  input, textarea, select, button {
+    font: inherit;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.6;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-maroon);
+    outline-offset: 2px;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes shimmer {
+  from { background-position: -200px 0; }
+  to { background-position: calc(200px + 100%) 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #efe7d8 0, #f7f1e6 50%, #efe7d8 100%) no-repeat;
+  background-size: 200px 100%;
+  background-color: #efe7d8;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-sheet { animation: sheet-up 180ms ease-out; }
+
+@keyframes toast-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-toast { animation: toast-in 160ms ease-out; }

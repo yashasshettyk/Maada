@@ -144,7 +144,8 @@ export function ritualRoutes(db: Database) {
         ORDER BY ${sort} LIMIT $6 OFFSET $7`,
       [...params, status, pageSize, (page - 1) * pageSize]);
     const [summary] = await db.query(
-      `SELECT COUNT(*)::int AS count, COALESCE(SUM(pending), 0)::bigint AS pending, COALESCE(SUM(paid), 0)::bigint AS paid
+      `SELECT COUNT(*)::int AS count, COUNT(*) FILTER (WHERE pending > 0)::int AS pending_count,
+              COALESCE(SUM(pending), 0)::bigint AS pending, COALESCE(SUM(paid), 0)::bigint AS paid
          FROM (${ENTRY_SELECT} ${where}) x WHERE ($5::text IS NULL OR x.status = $5)`, [...params, status]);
     return c.json({ items: rows, summary, page, pageSize });
   });

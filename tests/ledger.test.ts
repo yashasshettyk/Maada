@@ -5,7 +5,7 @@ type Ctx = Awaited<ReturnType<typeof setup>>;
 let t: Ctx;
 beforeEach(async () => { t = await setup(); });
 
-const donation = (amount: number, extra: Record<string, unknown> = {}) => ({
+const donation = (amount: number, extra: Record<string, unknown> = {}): Record<string, any> => ({
   id: id(), donor_name: 'Yashas Shetty', donation_date: '2026-10-16', amount, purpose: 'Maada development', ...extra,
 });
 const openWith = (amount: number) => t.ok('PUT', '/settings/opening-balance', { amount, date: '2026-04-01' });

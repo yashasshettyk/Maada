@@ -12,8 +12,9 @@ if (process.env.DATABASE_URL) {
   db = createPgDatabase(process.env.DATABASE_URL);
 } else {
   const { createPgliteDatabase } = await import('./db/pglite.js');
-  db = await createPgliteDatabase(process.env.PGLITE_DIR ?? '.data/pglite');
-  console.log('Using embedded database in .data/pglite (set DATABASE_URL to use Postgres)');
+  const dir = process.env.PGLITE_DIR ?? '.data/pglite';
+  db = await createPgliteDatabase(dir);
+  console.log(`Using embedded database in ${dir} (set DATABASE_URL to use Postgres)`);
 }
 await migrate(db, (m) => console.log(m));
 const app = createApp(db, optionsFromEnv());

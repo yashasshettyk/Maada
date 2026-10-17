@@ -117,7 +117,22 @@ export function ledgerRoutes(db: Database) {
     const related = await db.query(
       `SELECT id, receipt_number, status, created_at, cancel_reason FROM receipts
         WHERE source_type = $1 AND source_id = $2 AND id <> $3 ORDER BY created_at DESC`, [item.source_type, item.source_id, id]);
-    return c.json({ item, related });
+    // Where the record behind this receipt lives in the app (null if it was deleted).
+    let link: string | null = null;
+    if (item.source_type === 'donation') {
+      const [d] = await db.query('SELECT id FROM donations WHERE id = $1', [item.source_id]);
+      if (d) link = `/donations/${item.source_id}`;
+    } else if (item.source_type === 'ritual_payment') {
+      const [p] = await db.query<{ ritual_entry_id: string }>('SELECT ritual_entry_id FROM ritual_payments WHERE id = $1', [item.source_id]);
+      if (p) link = `/seves/${p.ritual_entry_id}`;
+    } else {
+      const [e] = await db.query('SELECT id FROM events WHERE id = $1', [item.source_id]);
+      if (e) link = `/events/${item.source_id}`;
+    }
+    const replaces = item.replaces_receipt_id
+      ? (await db.query<{ receipt_number: string }>('SELECT receipt_number FROM receipts WHERE id = $1', [item.replaces_receipt_id]))[0]?.receipt_number ?? null
+      : null;
+    return c.json({ item, related, link, replaces });
   });
 
   app.post('/receipts', async (c) => {
